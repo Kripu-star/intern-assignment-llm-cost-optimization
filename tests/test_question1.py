@@ -23,8 +23,8 @@ def test_holdout_subscription():
     assert got.kb_article == exp.kb_article
 
 
-def test_baseline_cost_is_high():
-    copilot = SupportCopilot()
-    for tid in PUBLIC:
+def test_cost_per_ticket_under_target():
+    for tid in PUBLIC + ["T-1091"]:
+        copilot = SupportCopilot()
         copilot.handle_ticket(tid)
-    assert copilot.session.total_points() > 15_000
+        assert copilot.session.total_points() <= 3000, tid

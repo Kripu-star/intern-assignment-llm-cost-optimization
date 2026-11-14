@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import json
 import re
-import uuid
 from dataclasses import dataclass
 
 from shared.billing import CostSession
-from shared.kb import all_articles_blob
 from shared.llm import ChatMessage, LlmClient
-from shared.tools import format_thread, get_order, get_ticket
+from shared.tools import get_order, get_ticket
 
 
 @dataclass
@@ -32,14 +30,22 @@ def parse_resolution(text: str) -> TicketResolution:
     )
 
 
-_FEW_SHOT = """
-Example ticket resolutions (format to copy):
+# Compact routing rules (one line per KB article) instead of full article text.
+# Wording deliberately avoids phrases that trigger long free-text answers:
+# output tokens cost 5x input tokens, so short output is the biggest saving.
+_SYSTEM = """You are ShopAssist, a Tier-1 support copilot.
+Pick one action: REFUND, REPLACE, SEND_ARTICLE, ESCALATE_TIER2. Cite one kb_article id.
+Rules (first match wins):
+- subscription: age<=30d REFUND else SEND_ARTICLE; subscription-cooling-off
+- license_revealed: SEND_ARTICLE; digital-license-no-refund
+- customized and damaged: ESCALATE_TIER2; custom-items-no-replace
+- damaged, delivered<=7d: REPLACE; damage-replacement-7-days
+- physical, unopened, delivered<=30d: REFUND; returns-within-30-days
+- otherwise: ESCALATE_TIER2; returns-within-30-days
+Reply with JSON only: {"action":..,"kb_article":..,"customer_reply":<one sentence>}"""
 
-1. Unopened headphones, day 10 → {"action":"REFUND","kb_article":"returns-within-30-days"}
-2. Ebook, license shown → {"action":"SEND_ARTICLE","kb_article":"digital-license-no-refund"}
-3. Cracked custom mug → {"action":"ESCALATE_TIER2","kb_article":"custom-items-no-replace"}
-4. Cracked stock mug, day 2 → {"action":"REPLACE","kb_article":"damage-replacement-7-days"}
-"""
+# Ticket metadata that does not affect routing.
+_DROP_FIELDS = {"order_id", "sku"}
 
 
 class SupportCopilot:
@@ -57,30 +63,14 @@ class SupportCopilot:
     def build_messages(self, ticket_id: str) -> list[ChatMessage]:
         ticket = get_ticket(ticket_id)
         order = get_order(ticket["order_id"])
-        thread = format_thread(ticket)
-        snapshot = json.dumps(order, indent=2)
-
-        system = "\n\n".join(
-            [
-                f"Run id {uuid.uuid4()}",
-                "You are ShopAssist, the Tier-1 customer support copilot.",
-                _FEW_SHOT,
-                "HELP CENTER:",
-                all_articles_blob(),
-                (
-                    "Instructions: Think step by step. Write full reasoning, quote any article "
-                    "you rely on, then output JSON with action, kb_article, customer_reply."
-                ),
-            ]
+        # Only customer messages carry information; agent filler is dropped.
+        thread = "\n".join(
+            m["text"] for m in ticket["messages"] if m["from"] == "customer"
         )
-        user = "\n\n".join(
-            [
-                f"TICKET_ID: {ticket_id}",
-                f"THREAD:\n{thread}",
-                f"ORDER_SNAPSHOT:\n{snapshot}\nEND_SNAPSHOT",
-            ]
-        )
-        return [ChatMessage("system", system), ChatMessage("user", user)]
+        facts = {k: v for k, v in order.items() if k not in _DROP_FIELDS}
+        snapshot = json.dumps(facts, separators=(",", ":"))
+        user = f"THREAD:\n{thread}\nORDER_SNAPSHOT:\n{snapshot}\nEND_SNAPSHOT"
+        return [ChatMessage("system", _SYSTEM), ChatMessage("user", user)]
 
     def handle_ticket(self, ticket_id: str) -> TicketResolution:
         messages = self.build_messages(ticket_id)

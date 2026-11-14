@@ -25,6 +25,13 @@ def main() -> None:
                 "kb_article": res.kb_article,
             }
         )
+    print(f"{'ticket':8} {'call':14} {'input':>6} {'cached':>6} {'output':>6} {'points':>7}")
+    for tid, call in zip(PUBLIC, copilot.session.calls):
+        cached = min(call.cached_prefix_tokens, call.input_tokens)
+        print(
+            f"{tid:8} {call.label:14} {call.input_tokens:>6} {cached:>6} "
+            f"{call.output_tokens:>6} {call.points():>7}"
+        )
     print(
         json.dumps(
             {"resolutions": rows, "total_points": copilot.session.total_points()},
