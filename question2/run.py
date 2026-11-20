@@ -19,6 +19,10 @@ def main() -> None:
     for tid in PUBLIC:
         res = pipe.handle_ticket(tid)
         rows.append({"ticket_id": tid, "action": res.action, "kb_article": res.kb_article})
+    print(f"{'ticket':8} {'call':10} {'input':>6} {'cached':>6} {'output':>6} {'points':>7}")
+    for tid, call in zip(PUBLIC, pipe.session.calls):
+        cached = min(call.cached_prefix_tokens, call.input_tokens)
+        print(f"{tid:8} {call.label:10} {call.input_tokens:>6} {cached:>6} {call.output_tokens:>6} {call.points():>7}")
     print(json.dumps({"resolutions": rows, "total_points": pipe.session.total_points()}, indent=2))
 
 
