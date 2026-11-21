@@ -31,7 +31,7 @@ Reproduce with `python question1/run.py`.
 ## Things I chose not to do
 
 - **No hardcoding by ticket id and no rules engine replacing the LLM call.** The point is a cheaper prompt, not bypassing the model. The holdout ticket `T-1091` (a subscription case not in the examples) still routes correctly, which shows the rules generalise.
-- **Prompt caching (`cached_prefix`) is not used.** It only applies to an identical prefix of at least 1,024 tokens, and the optimized system prompt is about 200 tokens. Padding it to 1,024 tokens would cost 1,024 × 0.3 ≈ 307 points, compared with about 600 points uncached today. That is a saving of roughly 300 points on every call after the first, but only at high volume. In production with a larger, stable system prompt, I would put all static content first and pass it as `cached_prefix`.
+- **Prompt caching (`cached_prefix`) is not used.** The prompt is about 250 tokens, below the 1,024-token minimum for caching. Padding it up to 1,024 tokens would cost about 307 points per cached call against about 600 for the unpadded prompt, but the first call pays full price for the padding, so it only pays off after roughly 8 or more calls. In production, with a larger and stable system prompt, I would put all static content first and pass it as `cached_prefix`.
 
 ## Test change
 
